@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/global"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("GLOBAL_DATABASE_URL")
+}
+
+enum TenantStatus {
+  active
+  suspended
+}
+
+enum LicenseType {
+  bronze
+  silver
+  gold
+}
+
+enum BillingPeriod {
+  monthly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  suspended
+  expired
+  canceled
+}
+
+model SuperAdmin {
+  id            String   @id @default(cuid())
+  nom           String
+  email         String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+
+  @@map("super_admins")
+}
+
+model Tenant {
+  id         String       @id @default(cuid())
+  nom        String
+  slug       String       @unique
+  logo_url   String?
+  status     TenantStatus @default(active)
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+
+  tenantDatabase TenantDatabase?
+  subscriptions  Subscription[]
+
+  @@map("tenants")
+}
+
+model TenantDatabase {
+  id          String   @id @default(cuid())
+  tenant_id   String   @unique
+  db_url      String
+  db_name     String?
+  db_host     String?
+  db_user     String?
+  db_password String?
+  db_status   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("tenant_databases")
+}
+
+model License {
+  id              String      @id @default(cuid())
+  nom             String
+  type            LicenseType
+  billing_period  BillingPeriod
+  duration_months Int
+  description     String?
+  prix_mensuel    Float
+  features        Json
+  is_active       Boolean     @default(true)
+  created_at      DateTime    @default(now())
+
+  promotions    Promotion[]
+  subscriptions Subscription[]
+
+  @@map("licenses")
+}
+
+model Promotion {
+  id            String   @id @default(cuid())
+  license_id    String
+  discount_rate Float
+  is_active     Boolean  @default(false)
+  starts_at     DateTime?
+  ends_at       DateTime?
+  created_at    DateTime @default(now())
+
+  license License @relation(fields: [license_id], references: [id])
+
+  @@map("promotions")
+}
+
+model Subscription {
+  id                       String             @id @default(cuid())
+  tenant_id                String
+  license_id               String
+  status                   SubscriptionStatus
+  billing_period           BillingPeriod
+  start_date               DateTime
+  end_date                 DateTime
+  reference                String?            @unique
+  siret                    String?
+  cabinet_nom              String?
+  cabinet_adresse          String?
+  cabinet_adresse_complete String?
+  specialite               String?
+  owner_nom                String?
+  owner_prenom             String?
+  created_at               DateTime           @default(now())
+  updated_at               DateTime           @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenant_id], references: [id])
+  license License @relation(fields: [license_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("subscriptions")
+}

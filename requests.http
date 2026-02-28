@@ -1,0 +1,265 @@
+@baseUrl = http://localhost:3000
+@tenantSlug = cabinet-demo
+@publicTenantSlug = cabinet-demo
+@publicPatientId =
+@publicDocumentId =
+
+### Health
+GET {{baseUrl}}/health
+
+### Superadmin login
+# @name superadminLogin
+POST {{baseUrl}}/auth/superadmin/login
+Content-Type: application/json
+
+{
+  "email": "superadmin@slotycare.test",
+  "password": "Password123!"
+}
+
+### List licenses (superadmin)
+# @name listLicenses
+GET {{baseUrl}}/licenses
+Authorization: Bearer {{superadminLogin.response.body.data.token}}
+
+### Create tenant (superadmin)
+# @name createTenant
+POST {{baseUrl}}/tenants
+Authorization: Bearer {{superadminLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "nom": "Cabinet Alpha",
+  "slug": "cabinet-alpha",
+  "status": "active"
+}
+
+### Create subscription (superadmin)
+# @name createSubscription
+POST {{baseUrl}}/subscriptions
+Authorization: Bearer {{superadminLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "tenant_id": "{{createTenant.response.body.data.id}}",
+  "license_id": "{{listLicenses.response.body.data[0].id}}",
+  "status": "active",
+  "billing_period": "monthly",
+  "start_date": "2026-02-22T00:00:00.000Z",
+  "end_date": "2026-03-22T00:00:00.000Z"
+}
+
+### Tenant login (admin)
+# @name tenantLogin
+POST {{baseUrl}}/auth/login
+X-Tenant-Slug: {{tenantSlug}}
+Content-Type: application/json
+
+{
+  "email": "admin@cabinet-demo.test",
+  "password": "Password123!"
+}
+
+### Tenant profile
+GET {{baseUrl}}/tenants/me
+X-Tenant-Slug: {{tenantSlug}}
+
+### List users (tenant admin)
+GET {{baseUrl}}/users
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+
+### Create user (tenant admin)
+# @name createUser
+POST {{baseUrl}}/users
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "email": "new.user@cabinet-demo.test",
+  "password": "Password123!",
+  "nom": "New",
+  "prenom": "User",
+  "role": "assistant"
+}
+
+### Create patient
+# @name createPatient
+POST {{baseUrl}}/patients
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "nom": "Bernard",
+  "prenom": "Luc",
+  "telephone": "+33622223333",
+  "tags": "vip",
+  "notes_internes": "Allergy to latex"
+}
+
+### Create service
+# @name createService
+POST {{baseUrl}}/services
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "nom": "Consultation Plus",
+  "duration_minutes": 40,
+  "prix": 70
+}
+
+### Assign practitioner to service
+POST {{baseUrl}}/services/{{createService.response.body.data.id}}/practitioners
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "user_id": "{{createUser.response.body.data.id}}"
+}
+
+### Create service rule
+POST {{baseUrl}}/service_rules
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "service_id": "{{createService.response.body.data.id}}",
+  "min_notice_hours": 1,
+  "cancel_notice_hours": 1,
+  "buffer_minutes": 5
+}
+
+### Create working hours
+POST {{baseUrl}}/working_hours
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "praticien_id": "{{createUser.response.body.data.id}}",
+  "weekday": 2,
+  "start_time": "09:00",
+  "end_time": "17:00",
+  "is_active": true
+}
+
+### Create break
+POST {{baseUrl}}/breaks
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "praticien_id": "{{createUser.response.body.data.id}}",
+  "weekday": 2,
+  "start_time": "12:00",
+  "end_time": "13:00"
+}
+
+### Create time off
+POST {{baseUrl}}/time_off
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "praticien_id": "{{createUser.response.body.data.id}}",
+  "start_at": "2026-02-25T09:00:00.000Z",
+  "end_at": "2026-02-25T17:00:00.000Z",
+  "reason": "Training"
+}
+
+### Create holiday
+POST {{baseUrl}}/holidays
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "date": "2026-03-01T00:00:00.000Z",
+  "label": "Holiday"
+}
+
+### Availability slots
+GET {{baseUrl}}/availability/slots?service_id={{createService.response.body.data.id}}&praticien_id={{createUser.response.body.data.id}}&from=2026-02-24T00:00:00.000Z&to=2026-02-24T23:59:59.000Z
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+
+### Create appointment
+# @name createAppointment
+POST {{baseUrl}}/appointments
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "patient_id": "{{createPatient.response.body.data.id}}",
+  "praticien_id": "{{createUser.response.body.data.id}}",
+  "service_id": "{{createService.response.body.data.id}}",
+  "date_heure_debut": "2026-02-24T09:30:00.000Z"
+}
+
+### Cancel appointment (triggers waitlist)
+PATCH {{baseUrl}}/appointments/{{createAppointment.response.body.data.id}}
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "status": "canceled"
+}
+
+### Create waitlist entry
+POST {{baseUrl}}/waitlist
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "service_id": "{{createService.response.body.data.id}}",
+  "praticien_id": "{{createUser.response.body.data.id}}",
+  "patient_name": "Waitlisted Patient",
+  "patient_email": "waitlist@example.com",
+  "preferred_from": "2026-02-24T08:00:00.000Z",
+  "preferred_to": "2026-02-24T12:00:00.000Z"
+}
+
+### Upload document (multipart)
+# @name uploadDocument
+POST {{baseUrl}}/documents
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="patient_id"
+
+{{createPatient.response.body.data.id}}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="type_document"
+
+note
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="visibility_level"
+
+public
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="sample.txt"
+Content-Type: text/plain
+
+Sample document content
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### Download document
+GET {{baseUrl}}/documents/{{uploadDocument.response.body.data.id}}/download
+X-Tenant-Slug: {{tenantSlug}}
+Authorization: Bearer {{tenantLogin.response.body.data.token}}
+
+### Public document download
+GET {{baseUrl}}/public/documents/{{publicDocumentId}}?tenant_slug={{publicTenantSlug}}&patient_id={{publicPatientId}}

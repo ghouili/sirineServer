@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/tenant"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("TENANT_DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  praticien
+  assistant
+}
+
+enum WaitlistStatus {
+  open
+  notified
+  closed
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+enum DocumentAction {
+  view
+  download
+}
+
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  completed
+  canceled
+  no_show
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenant_id     String
+  email         String
+  password_hash String
+  nom           String
+  prenom        String
+  role          UserRole
+  is_active     Boolean   @default(true)
+  last_login    DateTime?
+  created_at    DateTime  @default(now())
+
+  servicePractitioners ServicePractitioner[]
+  workingHours         WorkingHour[]
+  breaks               Break[]
+  timeOff              TimeOff[]
+  appointments         Appointment[]         @relation("AppointmentPractitioner")
+  uploadedDocuments    Document[]            @relation("DocumentUploader")
+  documentAccessLogs   DocumentAccessLog[]
+  auditLogs            AuditLog[]
+
+  @@unique([tenant_id, email])
+  @@index([tenant_id])
+  @@map("users")
+}
+
+model Patient {
+  id             String   @id @default(cuid())
+  tenant_id      String
+  nom            String
+  prenom         String
+  telephone      String?
+  tags           String?
+  notes_internes String?
+  created_at     DateTime @default(now())
+
+  appointments       Appointment[]
+  documents          Document[]
+  documentAccessLogs DocumentAccessLog[]
+
+  @@index([tenant_id])
+  @@map("patients")
+}
+
+model Service {
+  id               String   @id @default(cuid())
+  tenant_id        String
+  nom              String
+  duration_minutes Int
+  prix             Float
+
+  servicePractitioners ServicePractitioner[]
+  rules                ServiceRule?
+  appointments         Appointment[]
+  waitlistEntries      WaitlistEntry[]
+
+  @@index([tenant_id])
+  @@map("services")
+}
+
+model ServicePractitioner {
+  service_id String
+  user_id    String
+
+  service Service @relation(fields: [service_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@id([service_id, user_id])
+  @@map("service_practitioners")
+}
+
+model ServiceRule {
+  id                  String  @id @default(cuid())
+  tenant_id           String
+  service_id          String  @unique
+  min_notice_hours    Int     @default(0)
+  cancel_notice_hours Int     @default(0)
+  buffer_minutes      Int     @default(0)
+
+  service Service @relation(fields: [service_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("service_rules")
+}
+
+model WorkingHour {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  weekday      Int
+  start_time   String
+  end_time     String
+  is_active    Boolean  @default(true)
+
+  praticien User @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("working_hours")
+}
+
+model Break {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  weekday      Int
+  start_time   String
+  end_time     String
+
+  praticien User @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("breaks")
+}
+
+model TimeOff {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  start_at     DateTime
+  end_at       DateTime
+  reason       String?
+
+  praticien User @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("time_off")
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  tenant_id String
+  date      DateTime
+  label     String?
+
+  @@index([tenant_id])
+  @@map("holidays")
+}
+
+model Appointment {
+  id                        String            @id @default(cuid())
+  tenant_id                 String
+  patient_id                String
+  praticien_id              String
+  service_id                String
+  date_heure_debut          DateTime
+  date_heure_fin            DateTime
+  status                    AppointmentStatus
+  no_show_probability_score Float?
+  ia_recommandation         String?
+
+  patient       Patient @relation(fields: [patient_id], references: [id])
+  praticien     User    @relation("AppointmentPractitioner", fields: [praticien_id], references: [id])
+  service       Service @relation(fields: [service_id], references: [id])
+  notifications Notification[]
+
+  @@index([tenant_id])
+  @@map("appointments")
+}
+
+model WaitlistEntry {
+  id             String         @id @default(cuid())
+  tenant_id      String
+  service_id     String
+  praticien_id   String?
+  patient_name   String
+  patient_phone  String?
+  patient_email  String?
+  preferred_from DateTime?
+  preferred_to   DateTime?
+  status         WaitlistStatus
+  created_at     DateTime       @default(now())
+
+  service Service @relation(fields: [service_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("waitlist_entries")
+}
+
+model Notification {
+  id             String             @id @default(cuid())
+  tenant_id      String
+  appointment_id String?
+  type           String
+  channel        String
+  to_email       String
+  subject        String
+  payload        Json
+  schedule_at    DateTime?
+  status         NotificationStatus
+  tries          Int                @default(0)
+  sent_at        DateTime?
+
+  appointment Appointment? @relation(fields: [appointment_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("notifications")
+}
+
+model Document {
+  id               String   @id @default(cuid())
+  tenant_id        String
+  patient_id       String
+  file_path        String
+  type_document    String
+  visibility_level String
+  uploaded_by      String
+  created_at       DateTime @default(now())
+
+  patient  Patient @relation(fields: [patient_id], references: [id])
+  uploader User    @relation("DocumentUploader", fields: [uploaded_by], references: [id])
+
+  accessLogs DocumentAccessLog[]
+
+  @@index([tenant_id])
+  @@map("documents")
+}
+
+model DocumentAccessLog {
+  id          String         @id @default(cuid())
+  tenant_id   String
+  document_id String
+  user_id     String?
+  patient_id  String?
+  action      DocumentAction
+  ip_address  String?
+  created_at  DateTime       @default(now())
+
+  document Document @relation(fields: [document_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
+  patient  Patient? @relation(fields: [patient_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("document_access_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenant_id  String
+  user_id    String
+  action     String
+  details    Json?
+  ip_address String?
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("audit_logs")
+}

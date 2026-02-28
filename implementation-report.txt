@@ -1,0 +1,172 @@
+SlotyCare Backend Report (Steps 1-12)
+====================================
+
+Architecture Overview
+- Stack: Node.js + Express + TypeScript + Prisma (MySQL)
+- Multi-tenancy: shared DB + shared schema; tenant-scoped tables always filtered by tenant_id
+- Auth: JWT with role claims; tenant routes require active subscription
+- Validation: Zod; consistent JSON response shape
+
+Environment Variables
+- DATABASE_URL
+- JWT_SECRET
+- JWT_EXPIRES_IN
+- PORT
+- CORS_ORIGIN
+- Gmail OAuth2 variables present for later steps
+
+Models (Prisma Schema)
+Global / Commercial
+- super_admins: id, nom, email (unique), password_hash, created_at
+- tenants: id, nom, slug (unique), logo_url?, status, created_at, updated_at
+- licenses: id, nom, type, billing_period, duration_months, description?, prix_mensuel, features, is_active, created_at
+- promotions: id, license_id, discount_rate, is_active, starts_at?, ends_at?, created_at
+- subscriptions: id, tenant_id, license_id, status, billing_period, start_date, end_date,
+  reference?, siret?, cabinet_nom?, cabinet_adresse?, cabinet_adresse_complete?, specialite?,
+  owner_nom?, owner_prenom?, created_at, updated_at
+
+Tenant-scoped
+- users: id, tenant_id, email, password_hash, nom, prenom, role, is_active, last_login?, created_at
+- patients: id, tenant_id, nom, prenom, telephone?, tags?, notes_internes?, created_at
+- services: id, tenant_id, nom, duration_minutes, prix
+- service_practitioners: service_id, user_id (composite PK)
+- service_rules: id, tenant_id, service_id (unique), min_notice_hours, cancel_notice_hours, buffer_minutes
+- working_hours: id, tenant_id, praticien_id, weekday, start_time, end_time, is_active
+- breaks: id, tenant_id, praticien_id, weekday, start_time, end_time
+- time_off: id, tenant_id, praticien_id, start_at, end_at, reason?
+- holidays: id, tenant_id, date, label?
+- appointments: id, tenant_id, patient_id, praticien_id, service_id, date_heure_debut, date_heure_fin,
+  status, no_show_probability_score?, ia_recommandation?
+- waitlist_entries: id, tenant_id, service_id, praticien_id?, patient_name, patient_phone?, patient_email?,
+  preferred_from?, preferred_to?, status, created_at
+- notifications: id, tenant_id, appointment_id?, type, channel, to_email, subject, payload, schedule_at?,
+  status, tries, sent_at?
+- documents: id, tenant_id, patient_id, file_path, type_document, visibility_level, uploaded_by, created_at
+- document_access_logs: id, tenant_id, document_id, user_id?, patient_id?, action, ip_address?, created_at
+- audit_logs: id, tenant_id, user_id, action, details?, ip_address?, created_at
+
+Key Methods / Services
+- Tenant resolution: X-Tenant-Slug -> req.tenant; blocks missing/unknown/suspended tenants
+- Subscription gating: requires active subscription (status=active and now between start/end)
+- Auth: JWT-based; roles: super_admin, admin, praticien, assistant
+- Availability engine: working hours - breaks - time off - holidays - overlapping appointments
+- Appointment create: transaction + overlap check + tenant scoping
+- Waitlist: open entry on create; when appointment canceled -> queued notification + status=notified
+- Documents: upload to /uploads/{tenant_slug}/{patient_id}; view/download logs access
+
+Endpoints (Created So Far)
+Health
+- GET /health
+
+Auth
+- POST /auth/superadmin/login
+- POST /auth/login
+
+Tenant test
+- GET /tenants/me
+
+Superadmin
+- GET /licenses
+- POST /licenses
+- GET /licenses/:id
+- PATCH /licenses/:id
+- DELETE /licenses/:id
+- GET /promotions
+- POST /promotions
+- GET /promotions/:id
+- PATCH /promotions/:id
+- DELETE /promotions/:id
+- GET /tenants
+- POST /tenants
+- GET /tenants/:id
+- PATCH /tenants/:id
+- DELETE /tenants/:id
+- GET /subscriptions
+- POST /subscriptions
+- GET /subscriptions/:id
+- PATCH /subscriptions/:id
+- PATCH /subscriptions/:id/status
+- DELETE /subscriptions/:id
+- GET /kpi
+
+Tenant Admin (role=admin)
+- Users: GET /users, POST /users, GET /users/:id, PATCH /users/:id,
+  PATCH /users/:id/reset-password, DELETE /users/:id
+- Patients: GET /patients, POST /patients, GET /patients/:id, PATCH /patients/:id, DELETE /patients/:id
+- Services: GET /services, POST /services, GET /services/:id, PATCH /services/:id, DELETE /services/:id
+- Service practitioners: POST /services/:id/practitioners, DELETE /services/:id/practitioners/:userId
+- Service rules: GET /service_rules, POST /service_rules, GET /service_rules/:id,
+  PATCH /service_rules/:id, DELETE /service_rules/:id
+- Scheduling:
+  GET/POST/PATCH/DELETE /working_hours
+  GET/POST/PATCH/DELETE /breaks
+  GET/POST/PATCH/DELETE /time_off
+  GET/POST/PATCH/DELETE /holidays
+
+Availability
+- GET /availability/slots
+
+Appointments
+- GET /appointments
+- POST /appointments
+- GET /appointments/:id
+- PATCH /appointments/:id
+- DELETE /appointments/:id
+
+Waitlist
+- GET /waitlist
+- POST /waitlist
+- PATCH /waitlist/:id
+
+Documents (tenant scoped)
+- GET /documents
+- POST /documents
+- GET /documents/:id
+- GET /documents/:id/download
+
+Public
+- GET /public/documents/:id?tenant_slug=...&patient_id=...
+
+------------------------------------------------------------
+What to Do Later: Separate Databases Per Tenant
+------------------------------------------------------------
+Goal
+- Move from shared DB/shared schema to separate databases per tenant for stronger isolation.
+
+High-Level Steps
+1) Introduce a tenant database registry
+   - Add a global table (in the control DB) with tenant_id, db_name, db_host, db_user, db_password, db_status.
+   - This becomes the source of truth for tenant DB connection details.
+
+2) Update tenant resolver to attach DB credentials
+   - After resolving tenant by slug, fetch its DB config.
+   - Attach req.tenant.db or build a tenant-specific Prisma client.
+
+3) Implement dynamic Prisma client creation
+   - Create a Prisma client per tenant DB URL (cache per tenant for reuse).
+   - Ensure correct pooling and cleanup on deploy or tenant removal.
+
+4) Split migrations
+   - Keep global tables (super_admins, licenses, promotions, tenants, subscriptions) in the control DB.
+   - Run tenant schema migrations against each tenant database (users, appointments, etc.).
+
+5) Update services to use tenant-specific client
+   - Replace shared prisma instance with tenant-bound client for tenant-scoped tables.
+   - Keep global queries on the control DB client.
+
+6) Update seed and provisioning
+   - Seed global DB with licenses/promotions.
+   - For each tenant, provision a new DB + run migrations + seed tenant data.
+
+7) Update monitoring and backups
+   - Add tenant-level DB health checks.
+   - Automate backups per tenant DB.
+
+Why Shared DB is Better in Dev 
+- Faster setup: one DB, one migration pipeline, fewer credentials.
+- Lower cognitive load: devs focus on features instead of provisioning.
+- Easier local testing: no need to spin up multiple tenant databases.
+- Simplified CI: single DB instance for integration tests.
+- Lower resource usage: fewer connections and less storage during development.
+
+Note: once product maturity and compliance requirements increase, per-tenant DBs provide better isolation and easier data residency controls, but at the cost of operational complexity.

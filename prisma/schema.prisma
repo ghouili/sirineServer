@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  active
+  suspended
+}
+
+enum LicenseType {
+  bronze
+  silver
+  gold
+}
+
+enum BillingPeriod {
+  monthly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  suspended
+  expired
+  canceled
+}
+
+enum UserRole {
+  admin
+  praticien
+  assistant
+}
+
+enum WaitlistStatus {
+  open
+  notified
+  closed
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+enum DocumentAction {
+  view
+  download
+}
+
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  completed
+  canceled
+  no_show
+}
+
+model SuperAdmin {
+  id            String   @id @default(cuid())
+  nom           String
+  email         String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+
+  @@map("super_admins")
+}
+
+model Tenant {
+  id         String       @id @default(cuid())
+  nom        String
+  slug       String       @unique
+  logo_url   String?
+  status     TenantStatus @default(active)
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+
+  tenantDatabase       TenantDatabase?
+  subscriptions         Subscription[]
+  users                 User[]
+  patients              Patient[]
+  services              Service[]
+  serviceRules          ServiceRule[]
+  workingHours          WorkingHour[]
+  breaks                Break[]
+  timeOff               TimeOff[]
+  holidays              Holiday[]
+  appointments          Appointment[]
+  waitlistEntries       WaitlistEntry[]
+  notifications         Notification[]
+  documents             Document[]
+  documentAccessLogs    DocumentAccessLog[]
+  auditLogs             AuditLog[]
+
+  @@map("tenants")
+}
+
+model TenantDatabase {
+  id         String   @id @default(cuid())
+  tenant_id  String   @unique
+  db_url     String
+  db_name    String?
+  db_host    String?
+  db_user    String?
+  db_password String?
+  db_status  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("tenant_databases")
+}
+
+model License {
+  id             String      @id @default(cuid())
+  nom            String
+  type           LicenseType
+  billing_period BillingPeriod
+  duration_months Int
+  description    String?
+  prix_mensuel   Float
+  features       Json
+  is_active      Boolean     @default(true)
+  created_at     DateTime    @default(now())
+
+  promotions     Promotion[]
+  subscriptions  Subscription[]
+
+  @@map("licenses")
+}
+
+model Promotion {
+  id            String   @id @default(cuid())
+  license_id    String
+  discount_rate Float
+  is_active     Boolean  @default(false)
+  starts_at     DateTime?
+  ends_at       DateTime?
+  created_at    DateTime @default(now())
+
+  license License @relation(fields: [license_id], references: [id])
+
+  @@map("promotions")
+}
+
+model Subscription {
+  id                      String             @id @default(cuid())
+  tenant_id               String
+  license_id              String
+  status                  SubscriptionStatus
+  billing_period          BillingPeriod
+  start_date              DateTime
+  end_date                DateTime
+  reference               String?            @unique
+  siret                   String?
+  cabinet_nom             String?
+  cabinet_adresse         String?
+  cabinet_adresse_complete String?
+  specialite              String?
+  owner_nom               String?
+  owner_prenom            String?
+  created_at              DateTime           @default(now())
+  updated_at              DateTime           @updatedAt
+
+  tenant   Tenant  @relation(fields: [tenant_id], references: [id])
+  license  License @relation(fields: [license_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("subscriptions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenant_id     String
+  email         String
+  password_hash String
+  nom           String
+  prenom        String
+  role          UserRole
+  is_active     Boolean   @default(true)
+  last_login    DateTime?
+  created_at    DateTime  @default(now())
+
+  tenant                Tenant                @relation(fields: [tenant_id], references: [id])
+  servicePractitioners  ServicePractitioner[]
+  workingHours          WorkingHour[]
+  breaks                Break[]
+  timeOff               TimeOff[]
+  appointments          Appointment[]         @relation("AppointmentPractitioner")
+  uploadedDocuments     Document[]            @relation("DocumentUploader")
+  documentAccessLogs    DocumentAccessLog[]
+  auditLogs             AuditLog[]
+
+  @@unique([tenant_id, email])
+  @@index([tenant_id])
+  @@map("users")
+}
+
+model Patient {
+  id             String   @id @default(cuid())
+  tenant_id      String
+  nom            String
+  prenom         String
+  telephone      String?
+  tags           String?
+  notes_internes String?
+  created_at     DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenant_id], references: [id])
+  appointments  Appointment[]
+  documents     Document[]
+  documentAccessLogs DocumentAccessLog[]
+
+  @@index([tenant_id])
+  @@map("patients")
+}
+
+model Service {
+  id               String   @id @default(cuid())
+  tenant_id        String
+  nom              String
+  duration_minutes Int
+  prix             Float
+
+  tenant               Tenant               @relation(fields: [tenant_id], references: [id])
+  servicePractitioners ServicePractitioner[]
+  rules                ServiceRule?
+  appointments         Appointment[]
+  waitlistEntries      WaitlistEntry[]
+
+  @@index([tenant_id])
+  @@map("services")
+}
+
+model ServicePractitioner {
+  service_id String
+  user_id    String
+
+  service Service @relation(fields: [service_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@id([service_id, user_id])
+  @@map("service_practitioners")
+}
+
+model ServiceRule {
+  id                  String  @id @default(cuid())
+  tenant_id           String
+  service_id          String  @unique
+  min_notice_hours    Int     @default(0)
+  cancel_notice_hours Int     @default(0)
+  buffer_minutes      Int     @default(0)
+
+  tenant  Tenant  @relation(fields: [tenant_id], references: [id])
+  service Service @relation(fields: [service_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("service_rules")
+}
+
+model WorkingHour {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  weekday      Int
+  start_time   String
+  end_time     String
+  is_active    Boolean  @default(true)
+
+  tenant    Tenant @relation(fields: [tenant_id], references: [id])
+  praticien User   @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("working_hours")
+}
+
+model Break {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  weekday      Int
+  start_time   String
+  end_time     String
+
+  tenant    Tenant @relation(fields: [tenant_id], references: [id])
+  praticien User   @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("breaks")
+}
+
+model TimeOff {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  praticien_id String
+  start_at     DateTime
+  end_at       DateTime
+  reason       String?
+
+  tenant    Tenant @relation(fields: [tenant_id], references: [id])
+  praticien User   @relation(fields: [praticien_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("time_off")
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  tenant_id String
+  date      DateTime
+  label     String?
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("holidays")
+}
+
+model Appointment {
+  id                       String            @id @default(cuid())
+  tenant_id                String
+  patient_id               String
+  praticien_id             String
+  service_id               String
+  date_heure_debut         DateTime
+  date_heure_fin           DateTime
+  status                   AppointmentStatus
+  no_show_probability_score Float?
+  ia_recommandation        String?
+
+  tenant     Tenant  @relation(fields: [tenant_id], references: [id])
+  patient    Patient @relation(fields: [patient_id], references: [id])
+  praticien  User    @relation("AppointmentPractitioner", fields: [praticien_id], references: [id])
+  service    Service @relation(fields: [service_id], references: [id])
+  notifications Notification[]
+
+  @@index([tenant_id])
+  @@map("appointments")
+}
+
+model WaitlistEntry {
+  id              String         @id @default(cuid())
+  tenant_id       String
+  service_id      String
+  praticien_id    String?
+  patient_name    String
+  patient_phone   String?
+  patient_email   String?
+  preferred_from  DateTime?
+  preferred_to    DateTime?
+  status          WaitlistStatus
+  created_at      DateTime       @default(now())
+
+  tenant     Tenant  @relation(fields: [tenant_id], references: [id])
+  service    Service @relation(fields: [service_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("waitlist_entries")
+}
+
+model Notification {
+  id             String             @id @default(cuid())
+  tenant_id      String
+  appointment_id String?
+  type           String
+  channel        String
+  to_email       String
+  subject        String
+  payload        Json
+  schedule_at    DateTime?
+  status         NotificationStatus
+  tries          Int                @default(0)
+  sent_at        DateTime?
+
+  tenant      Tenant       @relation(fields: [tenant_id], references: [id])
+  appointment Appointment? @relation(fields: [appointment_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("notifications")
+}
+
+model Document {
+  id               String   @id @default(cuid())
+  tenant_id        String
+  patient_id       String
+  file_path        String
+  type_document    String
+  visibility_level String
+  uploaded_by      String
+  created_at       DateTime @default(now())
+
+  tenant   Tenant  @relation(fields: [tenant_id], references: [id])
+  patient  Patient @relation(fields: [patient_id], references: [id])
+  uploader User    @relation("DocumentUploader", fields: [uploaded_by], references: [id])
+
+  accessLogs DocumentAccessLog[]
+
+  @@index([tenant_id])
+  @@map("documents")
+}
+
+model DocumentAccessLog {
+  id          String         @id @default(cuid())
+  tenant_id   String
+  document_id String
+  user_id     String?
+  patient_id  String?
+  action      DocumentAction
+  ip_address  String?
+  created_at  DateTime       @default(now())
+
+  tenant   Tenant   @relation(fields: [tenant_id], references: [id])
+  document Document @relation(fields: [document_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
+  patient  Patient? @relation(fields: [patient_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("document_access_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenant_id  String
+  user_id    String
+  action     String
+  details    Json?
+  ip_address String?
+  created_at DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+  user   User   @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("audit_logs")
+}

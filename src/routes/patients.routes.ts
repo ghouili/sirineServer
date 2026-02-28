@@ -1,0 +1,101 @@
+import { Router } from "express";
+
+import { auth } from "../middlewares/auth";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription";
+import { requireRole } from "../middlewares/requireRole";
+import { tenantResolver } from "../middlewares/tenantResolver";
+import {
+  patientCreateSchema,
+  patientUpdateSchema
+} from "../schemas/patients.schemas";
+import { getPaginationParams } from "../utils/pagination";
+import {
+  createPatient,
+  deletePatient,
+  getPatientById,
+  listPatients,
+  updatePatient
+} from "../services/patients.service";
+
+export const patientsRouter = Router();
+
+patientsRouter.use(tenantResolver, requireActiveSubscription, auth, requireRole(["admin"]));
+
+patientsRouter.get("/patients", async (req, res, next) => {
+  try {
+    const { limit, offset } = getPaginationParams(
+      req.query.limit as string,
+      req.query.offset as string
+    );
+
+    const { items, total } = await listPatients(
+      req.tenantDb!,
+      req.tenant!.id,
+      limit,
+      offset,
+      req.query.q as string | undefined,
+      req.query.tags as string | undefined
+    );
+
+    res.status(200).json({ success: true, data: items, error: null, meta: { total, limit, offset } });
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+patientsRouter.get("/patients/:id", async (req, res, next) => {
+  try {
+    const patient = await getPatientById(req.tenantDb!, req.tenant!.id, req.params.id);
+
+    if (!patient) {
+      res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: patient, error: null, meta: null });
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+patientsRouter.post("/patients", async (req, res, next) => {
+  try {
+    const data = patientCreateSchema.parse(req.body);
+    const patient = await createPatient(req.tenantDb!, req.tenant!.id, data);
+
+    res.status(201).json({ success: true, data: patient, error: null, meta: null });
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+patientsRouter.patch("/patients/:id", async (req, res, next) => {
+  try {
+    const data = patientUpdateSchema.parse(req.body);
+    const patient = await updatePatient(req.tenantDb!, req.tenant!.id, req.params.id, data);
+
+    if (!patient) {
+      res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: patient, error: null, meta: null });
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+patientsRouter.delete("/patients/:id", async (req, res, next) => {
+  try {
+    const deleted = await deletePatient(req.tenantDb!, req.tenant!.id, req.params.id);
+
+    if (!deleted) {
+      res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });
+      return;
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    next(error as Error);
+  }
+});
