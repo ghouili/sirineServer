@@ -8,6 +8,7 @@ export async function requireActiveSubscription(
   next: NextFunction
 ): Promise<void> {
   try {
+    // Tenant must already be resolved before checking subscription status.
     if (!req.tenant?.id) {
       res.status(400).json({
         success: false,
@@ -18,6 +19,7 @@ export async function requireActiveSubscription(
       return;
     }
 
+    // Only allow access when an active subscription is within its date window.
     const now = new Date();
     const subscription = await globalPrisma.subscription.findFirst({
       where: {

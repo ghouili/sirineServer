@@ -2,11 +2,12 @@
 
 ## Architecture rules (non-negotiable)
 - Multi-DB + Shared Schema multi-tenancy: tenant-scoped data lives in a per-tenant database.
+- Patients are global: patient records live in the global DB (single shared patients table).
 - Keep `tenant_id` filters for defense-in-depth on all tenant-scoped tables.
 - Every by-id read/update/delete must verify `(id AND tenant_id)` (never `id` alone).
 - Add `tenant_id` to all created tenant records from `req.tenant.id` (never accept tenant_id from body).
-- Global tables (tenants, licenses, promotions, subscriptions, tenant_databases, super_admins) use the global DB client.
-- Tenant tables (users, patients, services, scheduling, appointments, waitlist, notifications, documents, logs) use `req.tenantDb`.
+- Global tables (tenants, licenses, promotions, subscriptions, tenant_databases, super_admins, patients) use the global DB client.
+- Tenant tables (users, services, scheduling, appointments, waitlist, notifications, documents, logs) use `req.tenantDb`.
 
 ## Tenant resolution
 - Tenant is resolved from `X-Tenant-Slug` header (primary).
@@ -29,9 +30,14 @@
 - Enforce via `requireActiveSubscription` middleware on all tenant routes.
 
 ## Auth/RBAC
-- JWT with claims: sub, role, tenant_id (except super_admin).
-- Roles: super_admin, admin, praticien, assistant.
+- JWT with claims: sub, role, tenant_id (except super_admin; patient tokens may omit tenant_id).
+- Roles: super_admin, admin, praticien, assistant, patient.
 - Use `requireRole()` per route group.
+
+## Patient ownership linking
+- Patient creation and login use the global DB only.
+- A patient is linked to a tenant only when editing the patient profile.
+- Tenant APIs that reference a patient must validate ownership based on the linked tenant id.
 
 ## Scheduling & anti double-booking
 - Appointment creation must be transactional.

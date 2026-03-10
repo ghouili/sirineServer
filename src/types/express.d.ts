@@ -12,7 +12,7 @@ declare global {
       tenantDb?: TenantPrismaClient;
       user?: {
         id: string;
-        role: "super_admin" | "admin" | "praticien" | "assistant";
+        role: "super_admin" | "admin" | "praticien" | "assistant" | "patient";
         tenantId?: string;
       };
     }

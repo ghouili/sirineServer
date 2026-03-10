@@ -78,7 +78,7 @@ How to test (requests.http)
   1) /health
   2) superadmin login
   3) list licenses
-  4) create tenant
+   4) create tenant (auto provisions tenant DB)
   5) create subscription
   6) tenant login
   7) tenant CRUD flows
@@ -108,6 +108,7 @@ Superadmin
 - DELETE /promotions/:id
 - GET /tenants
 - POST /tenants
+- POST /tenants/:id/provision-db (manual recovery)
 - GET /tenants/:id
 - PATCH /tenants/:id
 - DELETE /tenants/:id

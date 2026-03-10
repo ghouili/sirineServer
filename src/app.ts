@@ -25,11 +25,13 @@ import { holidaysRouter } from "./routes/holidays.routes";
 
 export const app = express();
 
+// Baseline security and request parsing for the API.
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Rate-limit authentication endpoints to slow down brute-force attempts.
 const authLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
 	limit: 20,
@@ -37,10 +39,12 @@ const authLimiter = rateLimit({
 	legacyHeaders: false
 });
 
+// Auth routes (login) are protected by the limiter.
 app.use(authLimiter, authRouter);
+// Health endpoint used by monitoring to verify global + tenant DBs.
 app.use(healthRouter);
-app.use(superadminRouter);
 app.use(tenantsRouter);
+app.use(superadminRouter);
 app.use(availabilityRouter);
 app.use(appointmentsRouter);
 app.use(waitlistRouter);
@@ -55,4 +59,5 @@ app.use(breaksRouter);
 app.use(timeOffRouter);
 app.use(holidaysRouter);
 
+// Centralized error handling for all routes.
 app.use(errorHandler);

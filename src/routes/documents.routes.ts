@@ -3,6 +3,7 @@ import path from "path";
 import { Router } from "express";
 import multer from "multer";
 
+import { globalPrisma } from "../db/prisma";
 import { auth } from "../middlewares/auth";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription";
 import { requireRole } from "../middlewares/requireRole";
@@ -50,7 +51,7 @@ documentsRouter.post("/documents", upload.single("file"), async (req, res, next)
       return;
     }
 
-    const patient = await req.tenantDb!.patient.findFirst({
+    const patient = await globalPrisma.patient.findFirst({
       where: { id: data.patient_id, tenant_id: req.tenant!.id }
     });
 

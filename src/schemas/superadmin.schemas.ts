@@ -32,6 +32,15 @@ export const tenantCreateSchema = z.object({
 
 export const tenantUpdateSchema = tenantCreateSchema.partial();
 
+export const tenantProvisionDbSchema = z.object({
+  db_name: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9_]+$/)
+    .optional()
+});
+
 export const subscriptionCreateSchema = z.object({
   tenant_id: z.string().min(1),
   license_id: z.string().min(1),

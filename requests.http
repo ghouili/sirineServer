@@ -1,8 +1,14 @@
-@baseUrl = http://localhost:3000
+@baseUrl = http://localhost:5000
+# Flow A (recommended): use seeded tenant `cabinet-demo`.
+# Flow B: create a new tenant/subscription first, then switch @tenantSlug and seed an admin user in that tenant DB.
 @tenantSlug = cabinet-demo
 @publicTenantSlug = cabinet-demo
 @publicPatientId =
 @publicDocumentId =
+# Set this after `Create user` or from seeded data before running requests that need a practitioner.
+@praticienId =
+@patientEmail = amina.benali@cabinet-demo.test
+@patientPassword = Password123!
 
 ### Health
 GET {{baseUrl}}/health
@@ -29,20 +35,22 @@ Authorization: Bearer {{superadminLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "nom": "Cabinet Alpha",
-  "slug": "cabinet-alpha",
+  "nom": "Cabinet Alpha 8",
+  "slug": "cabinet-alpha-8",
   "status": "active"
 }
 
 ### Create subscription (superadmin)
 # @name createSubscription
+# Prerequisite: execute `listLicenses` and `createTenant` right before this request.
+# Tip: use "Run All Requests in File" from the top to preserve dependency order.
 POST {{baseUrl}}/subscriptions
 Authorization: Bearer {{superadminLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "tenant_id": "{{createTenant.response.body.data.id}}",
-  "license_id": "{{listLicenses.response.body.data[0].id}}",
+  "tenant_id": "{{createTenant.response.body.$.data.tenant.id}}",
+  "license_id": "{{listLicenses.response.body.$.data[0].id}}",
   "status": "active",
   "billing_period": "monthly",
   "start_date": "2026-02-22T00:00:00.000Z",
@@ -60,6 +68,29 @@ Content-Type: application/json
   "password": "Password123!"
 }
 
+### Patient login
+# @name patientLogin
+POST {{baseUrl}}/patient/login
+Content-Type: application/json
+
+{
+  "email": "amina.benali@cabinet-demo.test",
+  "password": "Password123!"
+}
+
+### Patient register
+# @name patientRegister
+POST {{baseUrl}}/patient/register
+Content-Type: application/json
+
+{
+  "email": "selma.benamor@cabinet-demo.test",
+  "password": "Password123!",
+  "nom": "Ben Amor",
+  "prenom": "Selma",
+  "telephone": "+21629123458"
+}
+
 ### Tenant profile
 GET {{baseUrl}}/tenants/me
 X-Tenant-Slug: {{tenantSlug}}
@@ -71,6 +102,7 @@ Authorization: Bearer {{tenantLogin.response.body.data.token}}
 
 ### Create user (tenant admin)
 # @name createUser
+# If this succeeds, copy `createUser.response.body.data.id` into `@praticienId`.
 POST {{baseUrl}}/users
 X-Tenant-Slug: {{tenantSlug}}
 Authorization: Bearer {{tenantLogin.response.body.data.token}}
@@ -119,7 +151,7 @@ Authorization: Bearer {{tenantLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "user_id": "{{createUser.response.body.data.id}}"
+  "user_id": "{{praticienId}}"
 }
 
 ### Create service rule
@@ -142,7 +174,7 @@ Authorization: Bearer {{tenantLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "praticien_id": "{{createUser.response.body.data.id}}",
+  "praticien_id": "{{praticienId}}",
   "weekday": 2,
   "start_time": "09:00",
   "end_time": "17:00",
@@ -156,7 +188,7 @@ Authorization: Bearer {{tenantLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "praticien_id": "{{createUser.response.body.data.id}}",
+  "praticien_id": "{{praticienId}}",
   "weekday": 2,
   "start_time": "12:00",
   "end_time": "13:00"
@@ -169,7 +201,7 @@ Authorization: Bearer {{tenantLogin.response.body.data.token}}
 Content-Type: application/json
 
 {
-  "praticien_id": "{{createUser.response.body.data.id}}",
+  "praticien_id": "{{praticienId}}",
   "start_at": "2026-02-25T09:00:00.000Z",
   "end_at": "2026-02-25T17:00:00.000Z",
   "reason": "Training"
@@ -187,7 +219,7 @@ Content-Type: application/json
 }
 
 ### Availability slots
-GET {{baseUrl}}/availability/slots?service_id={{createService.response.body.data.id}}&praticien_id={{createUser.response.body.data.id}}&from=2026-02-24T00:00:00.000Z&to=2026-02-24T23:59:59.000Z
+GET {{baseUrl}}/availability/slots?service_id={{createService.response.body.data.id}}&praticien_id={{praticienId}}&from=2026-02-24T00:00:00.000Z&to=2026-02-24T23:59:59.000Z
 X-Tenant-Slug: {{tenantSlug}}
 Authorization: Bearer {{tenantLogin.response.body.data.token}}
 
@@ -200,7 +232,7 @@ Content-Type: application/json
 
 {
   "patient_id": "{{createPatient.response.body.data.id}}",
-  "praticien_id": "{{createUser.response.body.data.id}}",
+  "praticien_id": "{{praticienId}}",
   "service_id": "{{createService.response.body.data.id}}",
   "date_heure_debut": "2026-02-24T09:30:00.000Z"
 }
@@ -223,7 +255,7 @@ Content-Type: application/json
 
 {
   "service_id": "{{createService.response.body.data.id}}",
-  "praticien_id": "{{createUser.response.body.data.id}}",
+  "praticien_id": "{{praticienId}}",
   "patient_name": "Waitlisted Patient",
   "patient_email": "waitlist@example.com",
   "preferred_from": "2026-02-24T08:00:00.000Z",

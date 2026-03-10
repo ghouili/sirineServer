@@ -1,5 +1,6 @@
 import { AppointmentStatus } from "../../prisma/generated/tenant";
 import type { PrismaClient } from "../../prisma/generated/tenant";
+import { globalPrisma } from "../db/prisma";
 import { addMinutes } from "../utils/time";
 import { timeOverlap } from "../utils/timeOverlap";
 
@@ -56,15 +57,22 @@ export async function createAppointment(
   tenantId: string,
   data: AppointmentCreateInput
 ) {
+  const patient = await globalPrisma.patient.findFirst({
+    where: { id: data.patient_id, tenant_id: tenantId }
+  });
+
+  if (!patient) {
+    return { error: "RELATED_NOT_FOUND" as const };
+  }
+
   return db.$transaction(async (tx) => {
-    const [patient, practitioner, service, rules] = await Promise.all([
-      tx.patient.findFirst({ where: { id: data.patient_id, tenant_id: tenantId } }),
+    const [practitioner, service, rules] = await Promise.all([
       tx.user.findFirst({ where: { id: data.praticien_id, tenant_id: tenantId } }),
       tx.service.findFirst({ where: { id: data.service_id, tenant_id: tenantId } }),
       tx.serviceRule.findFirst({ where: { service_id: data.service_id, tenant_id: tenantId } })
     ]);
 
-    if (!patient || !practitioner || !service) {
+    if (!practitioner || !service) {
       return { error: "RELATED_NOT_FOUND" as const };
     }
 

@@ -205,29 +205,35 @@ async function main(): Promise<void> {
 
   const patient1 =
     (await prisma.patient.findFirst({
-      where: { tenant_id: tenant.id, nom: "Dupont", prenom: "Alice" }
+      where: { tenant_id: tenant.id, email: "amina.benali@cabinet-demo.test" }
     })) ??
     (await prisma.patient.create({
       data: {
         tenant_id: tenant.id,
-        nom: "Dupont",
-        prenom: "Alice",
-        telephone: "+33123456789",
+        email: "amina.benali@cabinet-demo.test",
+        password_hash: passwordHash,
+        nom: "Ben Ali",
+        prenom: "Amina",
+        telephone: "+21623123456",
         tags: "vip",
-        notes_internes: "Prefers morning appointments"
+        notes_internes: "Prefers morning appointments",
+        is_active: true
       }
     }));
 
   const patient2 =
     (await prisma.patient.findFirst({
-      where: { tenant_id: tenant.id, nom: "Martin", prenom: "Leo" }
+      where: { tenant_id: tenant.id, email: "youssef.trabelsi@cabinet-demo.test" }
     })) ??
     (await prisma.patient.create({
       data: {
         tenant_id: tenant.id,
-        nom: "Martin",
-        prenom: "Leo",
-        telephone: "+33612345678"
+        email: "youssef.trabelsi@cabinet-demo.test",
+        password_hash: passwordHash,
+        nom: "Trabelsi",
+        prenom: "Youssef",
+        telephone: "+21628123457",
+        is_active: true
       }
     }));
 

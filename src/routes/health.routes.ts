@@ -9,6 +9,7 @@ healthRouter.get("/health", async (_req, res) => {
   const checks: Record<string, unknown> = {};
 
   try {
+    // Global database connectivity and tenant registry visibility.
     await globalPrisma.$queryRaw`SELECT 1`;
     const registryCount = await globalPrisma.tenantDatabase.count();
     checks.globalDb = { ok: true, tenantRegistryCount: registryCount };
@@ -17,6 +18,7 @@ healthRouter.get("/health", async (_req, res) => {
   }
 
   try {
+    // Validate every tenant database registered in the global registry.
     const registries = await globalPrisma.tenantDatabase.findMany();
 
     if (registries.length === 0) {
@@ -26,6 +28,7 @@ healthRouter.get("/health", async (_req, res) => {
 
       for (const registry of registries) {
         try {
+          // Open the tenant database and verify connectivity.
           const tenantDb = getTenantPrisma(registry.db_url);
           await tenantDb.$queryRaw`SELECT 1`;
           results.push({ tenant_id: registry.tenant_id, ok: true });
@@ -49,6 +52,7 @@ healthRouter.get("/health", async (_req, res) => {
     checks.tenantDb = { ok: false, error: (error as Error).message };
   }
 
+  // Global status is healthy only if global DB and all tenant DB checks pass.
   const ok = Boolean(
     (checks.globalDb as { ok?: boolean })?.ok &&
       (checks.tenantDb as { ok?: boolean })?.ok

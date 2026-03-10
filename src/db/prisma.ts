@@ -4,9 +4,14 @@ import { PrismaClient as TenantPrismaClient } from "../../prisma/generated/tenan
 import { env } from "../config/env";
 
 const globalUrl = env.GLOBAL_DATABASE_URL || env.DATABASE_URL;
+const adminUrl = env.TENANT_DB_ADMIN_URL || globalUrl;
 
 export const globalPrisma = new GlobalPrismaClient({
 	datasources: { db: { url: globalUrl } }
+});
+
+export const adminPrisma = new GlobalPrismaClient({
+	datasources: { db: { url: adminUrl } }
 });
 
 const tenantClients = new Map<string, TenantPrismaClient>();
@@ -31,4 +36,15 @@ export async function getTenantDbUrl(tenantId: string): Promise<string> {
 	});
 
 	return registry?.db_url || env.DATABASE_URL;
+}
+
+export function buildTenantDbUrl(dbName: string): string {
+	const baseUrl = env.TENANT_DATABASE_URL || env.DATABASE_URL;
+	const url = new URL(baseUrl);
+	url.pathname = `/${dbName}`;
+	return url.toString();
+}
+
+export function getAdminDbUrl(): string {
+	return adminUrl;
 }

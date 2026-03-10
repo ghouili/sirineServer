@@ -33,9 +33,9 @@ Requests testing
 - Use requests.http with the REST Client extension.
 - It includes auth, tenant admin CRUD, availability, appointments, waitlist, and documents.
 
-Provision a tenant DB (Step 13B)
-- Create tenant in global DB via API
-- npm run tenant:provision -- --tenantId=<TENANT_ID> --slug=<TENANT_SLUG>
+Tenant DB provisioning
+- POST /tenants now creates the tenant and provisions its database automatically.
+- Optional manual provisioning remains available via POST /tenants/:id/provision-db.
 
 Notes
 - tenant_databases registry is filled during provisioning or seed (if TENANT_DATABASE_URL is set).

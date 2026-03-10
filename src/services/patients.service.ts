@@ -1,15 +1,17 @@
-import type { PrismaClient } from "../../prisma/generated/tenant";
+import { globalPrisma } from "../db/prisma";
+import { hashPassword } from "../utils/password";
 
 interface PatientInput {
   nom?: string;
   prenom?: string;
+  email?: string;
+  password?: string;
   telephone?: string | null;
   tags?: string | null;
   notes_internes?: string | null;
 }
 
 export async function listPatients(
-  db: PrismaClient,
   tenantId: string,
   limit: number,
   offset: number,
@@ -22,7 +24,8 @@ export async function listPatients(
     where.OR = [
       { nom: { contains: q } },
       { prenom: { contains: q } },
-      { telephone: { contains: q } }
+      { telephone: { contains: q } },
+      { email: { contains: q } }
     ];
   }
 
@@ -31,26 +34,41 @@ export async function listPatients(
   }
 
   const [items, total] = await Promise.all([
-    db.patient.findMany({
+    globalPrisma.patient.findMany({
       where,
       skip: offset,
       take: limit,
       orderBy: { created_at: "desc" }
     }),
-    db.patient.count({ where })
+    globalPrisma.patient.count({ where })
   ]);
 
   return { items, total };
 }
 
-export function getPatientById(db: PrismaClient, tenantId: string, id: string) {
-  return db.patient.findFirst({ where: { id, tenant_id: tenantId } });
+export function getPatientById(tenantId: string, id: string) {
+  return globalPrisma.patient.findFirst({ where: { id, tenant_id: tenantId } });
 }
 
-export function createPatient(db: PrismaClient, tenantId: string, data: PatientInput) {
-  return db.patient.create({
+export async function createPatient(tenantId: string, data: PatientInput) {
+  if (data.email) {
+    const existing = await globalPrisma.patient.findUnique({
+      where: { email: data.email }
+    });
+    if (existing) {
+      return { error: "EMAIL_IN_USE" as const };
+    }
+  }
+
+  const password_hash = data.password
+    ? await hashPassword(data.password)
+    : null;
+
+  const patient = await globalPrisma.patient.create({
     data: {
-      tenant_id: tenantId,
+      tenant_id: null,
+      email: data.email ?? null,
+      password_hash,
       nom: data.nom ?? "",
       prenom: data.prenom ?? "",
       telephone: data.telephone ?? null,
@@ -58,28 +76,47 @@ export function createPatient(db: PrismaClient, tenantId: string, data: PatientI
       notes_internes: data.notes_internes ?? null
     }
   });
+
+  return { patient };
 }
 
 export async function updatePatient(
-  db: PrismaClient,
   tenantId: string,
   id: string,
   data: PatientInput
 ) {
-  const result = await db.patient.updateMany({
-    where: { id, tenant_id: tenantId },
-    data
-  });
-
-  if (result.count === 0) {
-    return null;
+  const existing = await globalPrisma.patient.findUnique({ where: { id } });
+  if (!existing) {
+    return { error: "NOT_FOUND" as const };
   }
 
-  return getPatientById(db, tenantId, id);
+  if (existing.tenant_id && existing.tenant_id !== tenantId) {
+    return { error: "FORBIDDEN" as const };
+  }
+
+  const password_hash = data.password
+    ? await hashPassword(data.password)
+    : undefined;
+
+  const patient = await globalPrisma.patient.update({
+    where: { id },
+    data: {
+      tenant_id: existing.tenant_id ?? tenantId,
+      email: data.email ?? existing.email,
+      password_hash: password_hash ?? existing.password_hash,
+      nom: data.nom ?? existing.nom,
+      prenom: data.prenom ?? existing.prenom,
+      telephone: data.telephone ?? existing.telephone,
+      tags: data.tags ?? existing.tags,
+      notes_internes: data.notes_internes ?? existing.notes_internes
+    }
+  });
+
+  return { patient };
 }
 
-export async function deletePatient(db: PrismaClient, tenantId: string, id: string) {
-  const result = await db.patient.deleteMany({
+export async function deletePatient(tenantId: string, id: string) {
+  const result = await globalPrisma.patient.deleteMany({
     where: { id, tenant_id: tenantId }
   });
 

@@ -3,12 +3,18 @@ SlotyCare Backend Report (Steps 1-12)
 
 Architecture Overview
 - Stack: Node.js + Express + TypeScript + Prisma (MySQL)
-- Multi-tenancy: shared DB + shared schema; tenant-scoped tables always filtered by tenant_id
+- Multi-tenancy: multi-DB + shared schema; tenant-scoped tables always filtered by tenant_id
 - Auth: JWT with role claims; tenant routes require active subscription
 - Validation: Zod; consistent JSON response shape
 
 Environment Variables
 - DATABASE_URL
+- GLOBAL_DATABASE_URL
+- TENANT_DATABASE_URL
+- TENANT_DB_ADMIN_URL
+- TENANT_DB_HOST
+- TENANT_DB_USER
+- TENANT_DB_PASSWORD
 - JWT_SECRET
 - JWT_EXPIRES_IN
 - PORT
@@ -128,45 +134,13 @@ Public
 - GET /public/documents/:id?tenant_slug=...&patient_id=...
 
 ------------------------------------------------------------
-What to Do Later: Separate Databases Per Tenant
+Multi-DB Provisioning (Current)
 ------------------------------------------------------------
-Goal
-- Move from shared DB/shared schema to separate databases per tenant for stronger isolation.
+Flow
+- Superadmin creates a tenant via POST /tenants.
+- The API automatically creates a dedicated database, applies the shared schema,
+  and registers it in tenant_databases.
+- If provisioning fails, the tenant is rolled back and the database is dropped.
 
-High-Level Steps
-1) Introduce a tenant database registry
-   - Add a global table (in the control DB) with tenant_id, db_name, db_host, db_user, db_password, db_status.
-   - This becomes the source of truth for tenant DB connection details.
-
-2) Update tenant resolver to attach DB credentials
-   - After resolving tenant by slug, fetch its DB config.
-   - Attach req.tenant.db or build a tenant-specific Prisma client.
-
-3) Implement dynamic Prisma client creation
-   - Create a Prisma client per tenant DB URL (cache per tenant for reuse).
-   - Ensure correct pooling and cleanup on deploy or tenant removal.
-
-4) Split migrations
-   - Keep global tables (super_admins, licenses, promotions, tenants, subscriptions) in the control DB.
-   - Run tenant schema migrations against each tenant database (users, appointments, etc.).
-
-5) Update services to use tenant-specific client
-   - Replace shared prisma instance with tenant-bound client for tenant-scoped tables.
-   - Keep global queries on the control DB client.
-
-6) Update seed and provisioning
-   - Seed global DB with licenses/promotions.
-   - For each tenant, provision a new DB + run migrations + seed tenant data.
-
-7) Update monitoring and backups
-   - Add tenant-level DB health checks.
-   - Automate backups per tenant DB.
-
-Why Shared DB is Better in Dev 
-- Faster setup: one DB, one migration pipeline, fewer credentials.
-- Lower cognitive load: devs focus on features instead of provisioning.
-- Easier local testing: no need to spin up multiple tenant databases.
-- Simplified CI: single DB instance for integration tests.
-- Lower resource usage: fewer connections and less storage during development.
-
-Note: once product maturity and compliance requirements increase, per-tenant DBs provide better isolation and easier data residency controls, but at the cost of operational complexity.
+Manual Provisioning
+- POST /tenants/:id/provision-db remains available for one-off or recovery cases.

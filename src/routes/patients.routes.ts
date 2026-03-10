@@ -29,7 +29,6 @@ patientsRouter.get("/patients", async (req, res, next) => {
     );
 
     const { items, total } = await listPatients(
-      req.tenantDb!,
       req.tenant!.id,
       limit,
       offset,
@@ -45,7 +44,7 @@ patientsRouter.get("/patients", async (req, res, next) => {
 
 patientsRouter.get("/patients/:id", async (req, res, next) => {
   try {
-    const patient = await getPatientById(req.tenantDb!, req.tenant!.id, req.params.id);
+    const patient = await getPatientById(req.tenant!.id, req.params.id);
 
     if (!patient) {
       res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });
@@ -61,9 +60,19 @@ patientsRouter.get("/patients/:id", async (req, res, next) => {
 patientsRouter.post("/patients", async (req, res, next) => {
   try {
     const data = patientCreateSchema.parse(req.body);
-    const patient = await createPatient(req.tenantDb!, req.tenant!.id, data);
+    const result = await createPatient(req.tenant!.id, data);
 
-    res.status(201).json({ success: true, data: patient, error: null, meta: null });
+    if (result.error === "EMAIL_IN_USE") {
+      res.status(409).json({
+        success: false,
+        data: null,
+        error: { message: "EMAIL_IN_USE" },
+        meta: null
+      });
+      return;
+    }
+
+    res.status(201).json({ success: true, data: result.patient, error: null, meta: null });
   } catch (error) {
     next(error as Error);
   }
@@ -72,14 +81,19 @@ patientsRouter.post("/patients", async (req, res, next) => {
 patientsRouter.patch("/patients/:id", async (req, res, next) => {
   try {
     const data = patientUpdateSchema.parse(req.body);
-    const patient = await updatePatient(req.tenantDb!, req.tenant!.id, req.params.id, data);
+    const result = await updatePatient(req.tenant!.id, req.params.id, data);
 
-    if (!patient) {
+    if (result.error === "NOT_FOUND") {
       res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });
       return;
     }
 
-    res.status(200).json({ success: true, data: patient, error: null, meta: null });
+    if (result.error === "FORBIDDEN") {
+      res.status(403).json({ success: false, data: null, error: { message: "FORBIDDEN" }, meta: null });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: result.patient, error: null, meta: null });
   } catch (error) {
     next(error as Error);
   }
@@ -87,7 +101,7 @@ patientsRouter.patch("/patients/:id", async (req, res, next) => {
 
 patientsRouter.delete("/patients/:id", async (req, res, next) => {
   try {
-    const deleted = await deletePatient(req.tenantDb!, req.tenant!.id, req.params.id);
+    const deleted = await deletePatient(req.tenant!.id, req.params.id);
 
     if (!deleted) {
       res.status(404).json({ success: false, data: null, error: { message: "NOT_FOUND" }, meta: null });

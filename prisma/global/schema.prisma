@@ -52,8 +52,31 @@ model Tenant {
 
   tenantDatabase TenantDatabase?
   subscriptions  Subscription[]
+  patients       Patient[]
 
   @@map("tenants")
+}
+
+model Patient {
+  id             String   @id @default(cuid())
+  tenant_id      String?
+  email          String?
+  password_hash  String?
+  nom            String
+  prenom         String
+  telephone      String?
+  tags           String?
+  notes_internes String?
+  is_active      Boolean  @default(true)
+  last_login     DateTime?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenant_id], references: [id])
+
+  @@unique([email])
+  @@index([tenant_id])
+  @@map("patients")
 }
 
 model TenantDatabase {

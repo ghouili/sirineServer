@@ -195,11 +195,58 @@ async function seedGlobal(globalPrisma: GlobalPrismaClient) {
     }
   }
 
+  const patient1 =
+    (await globalPrisma.patient.findUnique({
+      where: { email: "amina.benali@cabinet-demo.test" }
+    })) ??
+    (await globalPrisma.patient.create({
+      data: {
+        tenant_id: tenant.id,
+        email: "amina.benali@cabinet-demo.test",
+        password_hash: passwordHash,
+        nom: "Ben Ali",
+        prenom: "Amina",
+        telephone: "+21623123456",
+        tags: "vip",
+        notes_internes: "Prefers morning appointments",
+        is_active: true
+      }
+    }));
+
+  const patient2 =
+    (await globalPrisma.patient.findUnique({
+      where: { email: "youssef.trabelsi@cabinet-demo.test" }
+    })) ??
+    (await globalPrisma.patient.create({
+      data: {
+        tenant_id: tenant.id,
+        email: "youssef.trabelsi@cabinet-demo.test",
+        password_hash: passwordHash,
+        nom: "Trabelsi",
+        prenom: "Youssef",
+        telephone: "+21628123457",
+        is_active: true
+      }
+    }));
+
+  await globalPrisma.patient.update({
+    where: { id: patient2.id },
+    data: { notes_internes: "Follow-up next month" }
+  });
+
   console.log("Global seed completed:", { tenantId: tenant.id, slug: tenant.slug });
-  return tenant.id;
+  return {
+    tenantId: tenant.id,
+    patient1: { id: patient1.id, nom: patient1.nom },
+    patient2: { id: patient2.id, nom: patient2.nom }
+  };
 }
 
-async function seedTenant(tenantDbUrl: string, tenantId: string) {
+async function seedTenant(
+  tenantDbUrl: string,
+  tenantId: string,
+  patients: { patient1: { id: string; nom: string }; patient2: { id: string } }
+) {
   const tenantPrisma = new TenantPrismaClient({
     datasources: { db: { url: tenantDbUrl } }
   });
@@ -245,34 +292,6 @@ async function seedTenant(tenantDbUrl: string, tenantId: string) {
         role: UserRole.assistant
       }
     });
-
-    const patient1 =
-      (await tenantPrisma.patient.findFirst({
-        where: { tenant_id: tenantId, nom: "Dupont", prenom: "Alice" }
-      })) ??
-      (await tenantPrisma.patient.create({
-        data: {
-          tenant_id: tenantId,
-          nom: "Dupont",
-          prenom: "Alice",
-          telephone: "+33123456789",
-          tags: "vip",
-          notes_internes: "Prefers morning appointments"
-        }
-      }));
-
-    const patient2 =
-      (await tenantPrisma.patient.findFirst({
-        where: { tenant_id: tenantId, nom: "Martin", prenom: "Leo" }
-      })) ??
-      (await tenantPrisma.patient.create({
-        data: {
-          tenant_id: tenantId,
-          nom: "Martin",
-          prenom: "Leo",
-          telephone: "+33612345678"
-        }
-      }));
 
     const service1 =
       (await tenantPrisma.service.findFirst({
@@ -418,7 +437,7 @@ async function seedTenant(tenantDbUrl: string, tenantId: string) {
       (await tenantPrisma.appointment.findFirst({
         where: {
           tenant_id: tenantId,
-          patient_id: patient1.id,
+          patient_id: patients.patient1.id,
           praticien_id: praticien.id,
           date_heure_debut: appointmentStart
         }
@@ -426,7 +445,7 @@ async function seedTenant(tenantDbUrl: string, tenantId: string) {
       (await tenantPrisma.appointment.create({
         data: {
           tenant_id: tenantId,
-          patient_id: patient1.id,
+          patient_id: patients.patient1.id,
           praticien_id: praticien.id,
           service_id: service1.id,
           date_heure_debut: appointmentStart,
@@ -450,17 +469,12 @@ async function seedTenant(tenantDbUrl: string, tenantId: string) {
           channel: "email",
           to_email: "patient@example.com",
           subject: "Rappel de rendez-vous",
-          payload: { patient: patient1.nom, service: service1.nom },
+          payload: { patient: patients.patient1.nom, service: service1.nom },
           status: NotificationStatus.queued,
           schedule_at: new Date(appointmentStart.getTime() - 24 * 60 * 60 * 1000)
         }
       });
     }
-
-    await tenantPrisma.patient.update({
-      where: { id: patient2.id },
-      data: { notes_internes: "Follow-up next month" }
-    });
 
     console.log("Tenant seed completed:", { tenantId, adminEmail: admin.email });
   } finally {
@@ -474,9 +488,9 @@ async function main() {
   });
 
   try {
-    const tenantId = await seedGlobal(globalPrisma);
+    const globalSeed = await seedGlobal(globalPrisma);
     const registry = await globalPrisma.tenantDatabase.findUnique({
-      where: { tenant_id: tenantId }
+      where: { tenant_id: globalSeed.tenantId }
     });
 
     const tenantDbUrl = registry?.db_url || env.TENANT_DATABASE_URL;
@@ -486,7 +500,10 @@ async function main() {
       return;
     }
 
-    await seedTenant(tenantDbUrl, tenantId);
+    await seedTenant(tenantDbUrl, globalSeed.tenantId, {
+      patient1: globalSeed.patient1,
+      patient2: globalSeed.patient2
+    });
   } finally {
     await globalPrisma.$disconnect();
   }
